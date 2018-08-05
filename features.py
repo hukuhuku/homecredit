@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 
 from base import *
-from base import Feature
 import gc
 
 def one_hot_encoder(df, nan_as_category = True):
@@ -102,12 +101,10 @@ class bureau_and_balance(Feature):
         bureau_agg.to_csv("tes.csv")
         self.df = bureau_agg
 
+        del bureau_agg;gc.collect()
 
 if __name__ == '__main__':
     args = get_arguments()
-
-    
-
 
     generate_features(globals(), args.force)
 
