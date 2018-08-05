@@ -27,11 +27,10 @@ def get_features(namespace):
 
 def generate_features(namespace, overwrite):
     for f in get_features(namespace):
-        if f.train_path.exists() and f.test_path.exists() and not overwrite:
+        if f.df.exists() and not overwrite:
             print(f.name, 'was skipped')
         else:
             f.run().save()
-
 
 @contextmanager
 def timer(name):
@@ -48,18 +47,15 @@ class Feature(metaclass=ABCMeta):
     
     def __init__(self):
         self.name = self.__class__.__name__
-        self.train = pd.DataFrame()
-        self.test = pd.DataFrame()
-        self.train_path = Path(self.dir) / f'./data/{self.name}_train.ftr'
-        self.test_path = Path(self.dir) / f'./data/{self.name}_test.ftr'
+        self.df = pd.DataFrame()
+        self.test_path = Path(self.dir) / f'./data/{self.name}_df.ftr'
     
     def run(self):
         with timer(self.name):
             self.create_features()
             prefix = self.prefix + '_' if self.prefix else ''
             suffix = '_' + self.suffix if self.suffix else ''
-            self.train.columns = prefix + self.train.columns + suffix
-            self.test.columns = prefix + self.test.columns + suffix
+            self.df.columns = prefix + self.df.columns + suffix
         return self
     
     @abstractmethod
@@ -67,35 +63,7 @@ class Feature(metaclass=ABCMeta):
         raise NotImplementedError
     
     def save(self):
-        self.train.to_feather(str(self.train_path))
-        self.test.to_feather(str(self.test_path))
+        self.df.to_feather(str(self.train_path))
 
 
-class Leak(metaclass=ABCMeta):
-    prefix = ''
-    suffix = ''
-    dir = '.'
-    
-    def __init__(self):
-        self.name = self.__class__.__name__
-        self.train = pd.DataFrame()
-        self.test = pd.DataFrame()
-        self.train_path = Path(self.dir) / f'./data/{self.name}_train.tft'
-        self.test_path = Path(self.dir) / f'./data/{self.name}_test.ftr'
-    
-    def run(self):
-        with timer(self.name):
-            self.find_leak()
-            prefix = self.prefix + '_' if self.prefix else ''
-            suffix = '_' + self.suffix if self.suffix else ''
-            self.train.columns = prefix + self.train.columns + suffix
-            self.test.columns = prefix + self.test.columns + suffix
-        return self
-    
-    @abstractmethod
-    def find_leak(self):
-        raise NotImplementedError
-    
-    def save(self):
-        self.train.to_feather(str(self.train_path))
-        self.test.to_feather(str(self.test_path))
+
