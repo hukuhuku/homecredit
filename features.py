@@ -3,7 +3,7 @@ import numpy as np
 
 from base import *
 from base import Feature
-import gc; 
+import gc
 
 def one_hot_encoder(df, nan_as_category = True):
     original_columns = list(df.columns)
