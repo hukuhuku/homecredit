@@ -89,9 +89,9 @@ def fit_predict(df, num_folds, stratified = False, debug= False):
         test_df['TARGET'] = sub_preds
         test_df[['SK_ID_CURR', 'TARGET']].to_csv(submission_file_name, index= False)
 
-def main():
-    feats = ["application","bureau_and_balance"]
-    debug = True
+def main(debug=True):
+    feats = ["application","bureau_and_balance","previous_aplications","installments_payments","credit_card_valance","pos_cash"]
+    print(feats)
     df = load_data(feats,debug=debug)
     with timer("Run LightGBM with kfold"):
         fit_predict(df, num_folds= 5, stratified= False,debug=debug)
