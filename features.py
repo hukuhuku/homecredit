@@ -1,3 +1,5 @@
+#Almost https://www.kaggle.com/dromosys/fork-of-fork-lightgbm-with-simple-features-cee847/code
+
 import pandas as pd
 import numpy as np
 
@@ -102,8 +104,8 @@ class bureau_and_balance(Feature):
         del bureau_agg;gc.collect()
 
 class previous_aplications(Feature):
-    def create_feature(self):
-        prev = pd.read_csv('./input/previous_application.csv', nrows = num_rows)
+    def create_features(self,nan_as_category=True):
+        prev = pd.read_csv('./input/previous_application.csv')
         prev, cat_cols = one_hot_encoder(prev, nan_as_category= True)
         # Days 365.243 values -> nan
         prev['DAYS_FIRST_DRAWING'].replace(365243, np.nan, inplace= True)
@@ -122,7 +124,7 @@ class previous_aplications(Feature):
             'AMT_DOWN_PAYMENT': [ 'max', 'mean'],
             'AMT_GOODS_PRICE': [ 'max', 'mean'],
             'HOUR_APPR_PROCESS_START': [ 'max', 'mean'],
-            'RATE_DOWN_PAYMENT': [ 'max', 'mean'],
+            'RATE_DOWN_PAYMENT': ['max', 'mean'],
             'DAYS_DECISION': [ 'max', 'mean'],
             'CNT_PAYMENT': ['mean', 'sum'],
         }
@@ -133,16 +135,22 @@ class previous_aplications(Feature):
     
         prev_agg = prev.groupby('SK_ID_CURR').agg({**num_aggregations, **cat_aggregations})
         prev_agg.columns = pd.Index(['PREV_' + e[0] + "_" + e[1].upper() for e in prev_agg.columns.tolist()])
+
         #Previous Applications: Approved Applications - only numerical features
         approved = prev[prev['NAME_CONTRACT_STATUS_Approved'] == 1]
         approved_agg = approved.groupby('SK_ID_CURR').agg(num_aggregations)
         approved_agg.columns = pd.Index(['APPROVED_' + e[0] + "_" + e[1].upper() for e in approved_agg.columns.tolist()])
-        prev_agg = prev_agg.join(approved_agg, how='left', on='SK_ID_CURR')
+        approved_agg.reset_index(inplace=True)
+        prev_agg.reset_index(inplace=True)
+        prev_agg = pd.merge(prev_agg,approved_agg, how='left', on='SK_ID_CURR')
+
         # Previous Applications: Refused Applications - only numerical features
         refused = prev[prev['NAME_CONTRACT_STATUS_Refused'] == 1]
         refused_agg = refused.groupby('SK_ID_CURR').agg(num_aggregations)
         refused_agg.columns = pd.Index(['REFUSED_' + e[0] + "_" + e[1].upper() for e in refused_agg.columns.tolist()])
-        prev_agg = prev_agg.join(refused_agg, how='left', on='SK_ID_CURR')
+        refused_agg.reset_index(inplace=True)
+        prev_agg = pd.merge(prev_agg,refused_agg, how='left', on='SK_ID_CURR')
+        
         del refused, refused_agg, approved, approved_agg, prev
         gc.collect()
         
@@ -150,7 +158,7 @@ class previous_aplications(Feature):
 
 class pos_cash(Feature):
     def create_features(self,nan_as_category=True):
-        pos = pd.read_csv('./input/POS_CASH_balance.csv', nrows = num_rows)
+        pos = pd.read_csv('./input/POS_CASH_balance.csv')
         pos, cat_cols = one_hot_encoder(pos, nan_as_category= True)
         
         aggregations = {
@@ -167,11 +175,11 @@ class pos_cash(Feature):
         pos_agg['POS_COUNT'] = pos.groupby('SK_ID_CURR').size()
         del pos
         gc.collect()
-        self.df = pos_agg
+        self.df = pos_agg.reset_index()
 
 class installments_payments(Feature):
     def create_features(self,nan_as_category=True):
-        ins = pd.read_csv('./input/installments_payments.csv', nrows = num_rows)
+        ins = pd.read_csv('./input/installments_payments.csv')
         ins, cat_cols = one_hot_encoder(ins, nan_as_category= True)
         # Percentage and difference paid in each installment (amount paid and installment value)
         ins['PAYMENT_PERC'] = ins['AMT_PAYMENT'] / ins['AMT_INSTALMENT']
@@ -200,11 +208,11 @@ class installments_payments(Feature):
         ins_agg['INSTAL_COUNT'] = ins.groupby('SK_ID_CURR').size()
         del ins
         gc.collect()
-        self.df = ins_agg
+        self.df = ins_agg.reset_index()
 
 class credit_card_valance(Feature):
-    def create_features(self,num_rows = None, nan_as_category = True):
-        cc = pd.read_csv('../input/credit_card_balance.csv', nrows = num_rows)
+    def create_features(self,nan_as_category = True):
+        cc = pd.read_csv('./input/credit_card_balance.csv')
         cc, cat_cols = one_hot_encoder(cc, nan_as_category= True)
         # General aggregations
         cc.drop(['SK_ID_PREV'], axis= 1, inplace = True)
@@ -214,7 +222,7 @@ class credit_card_valance(Feature):
         cc_agg['CC_COUNT'] = cc.groupby('SK_ID_CURR').size()
         del cc
         gc.collect()
-        self.df = cc_agg
+        self.df = cc_agg.reset_index()
 
 
 if __name__ == '__main__':
