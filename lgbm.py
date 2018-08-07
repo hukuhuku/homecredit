@@ -84,15 +84,18 @@ def fit_predict(df, num_folds, stratified = False, debug= False):
     print('Full AUC score %.6f' % roc_auc_score(train_df['TARGET'], oof_preds))
     # Write submission file and plot feature importance
 
-    feature_importance_df.to_csv("feature_importance_df.csv",index=True,header=True)
+    feature_importance_df.to_csv("./data/feature_importance_df.csv",index=True,header=True)
     if not debug:
         test_df['TARGET'] = sub_preds
         test_df[['SK_ID_CURR', 'TARGET']].to_csv(submission_file_name, index= False)
 
-def main(debug=True):
+def main(debug=False):
+    
     feats = ["application","bureau_and_balance","previous_aplications","installments_payments","credit_card_valance","pos_cash"]
-    print(feats)
-    df = load_data(feats,debug=debug)
+
+    with timer("Load_data"):
+        df = load_data(feats,debug=debug)
+
     with timer("Run LightGBM with kfold"):
         fit_predict(df, num_folds= 5, stratified= False,debug=debug)
 
