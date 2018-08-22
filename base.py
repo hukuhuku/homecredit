@@ -27,10 +27,11 @@ def get_features(namespace):
 
 def generate_features(namespace, overwrite):
     for f in get_features(namespace):
-        if f.df.exists() and not overwrite:
+        if f.train_path.exists() and f.test_path.exists() and not overwrite:
             print(f.name, 'was skipped')
         else:
             f.run().save()
+
 
 @contextmanager
 def timer(name):
@@ -47,15 +48,18 @@ class Feature(metaclass=ABCMeta):
     
     def __init__(self):
         self.name = self.__class__.__name__
-        self.df = pd.DataFrame()
-        self.test_path = Path(self.dir) / f'./data/{self.name}_df.ftr'
+        self.train = pd.DataFrame()
+        self.test = pd.DataFrame()
+        self.train_path = Path(self.dir) / f'./data/{self.name}_train.ftr'
+        self.test_path = Path(self.dir) / f'./data/{self.name}_test.ftr'
     
     def run(self):
         with timer(self.name):
             self.create_features()
             prefix = self.prefix + '_' if self.prefix else ''
             suffix = '_' + self.suffix if self.suffix else ''
-            self.df.columns = prefix + self.df.columns + suffix
+            self.train.columns = prefix + self.train.columns + suffix
+            self.test.columns = prefix + self.test.columns + suffix
         return self
     
     @abstractmethod
@@ -63,7 +67,26 @@ class Feature(metaclass=ABCMeta):
         raise NotImplementedError
     
     def save(self):
-        self.df.to_feather(str(self.train_path))
+        try:
+            self.train.to_feather(str(self.train_path))
+            self.test.to_feather(str(self.test_path))
+        except:
+            self.train.reset_index(inplace=True)
+            self.test.reset_index(inplace=True)
+            self.train.to_feather(str(self.train_path))
+            self.test.to_feather(str(self.test_path))
 
+def get_input(feats,debug=False):
+    dfs = [pd.read_feather(f'./data/{f}_train.ftr') for f in feats]
+    X_train = pd.concat(dfs, axis=1)
+
+    dfs = [pd.read_feather(f'./data/{f}_test.ftr') for f in feats]
+    X_test = pd.concat(dfs, axis=1)
+
+    if debug:
+        X_train = X_train.loc[:10000]
+        X_test = X_test.loc[:10000]
+
+    return X_train,X_test                                            
 
 

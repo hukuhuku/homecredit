@@ -6,6 +6,9 @@ import numpy as np
 from base import *
 import gc
 
+train_id = pd.read_csv('./input/application_train.csv')[['SK_ID_CURR']]
+test_id = pd.read_csv('./input/application_test.csv')[['SK_ID_CURR']]
+
 def one_hot_encoder(df, nan_as_category = True):
     original_columns = list(df.columns)
     categorical_columns = [col for col in df.columns if df[col].dtype == 'object']
@@ -34,8 +37,9 @@ class application(Feature):
         df['INCOME_PER_PERSON'] = df['AMT_INCOME_TOTAL'] / df['CNT_FAM_MEMBERS'] # 総収入/家族人数
         df['ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL'] # 月々の返済額/総収入
         df['PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT'] # 月々の返済額/借入額
-        self.df = df.reset_index()
-   
+        
+        self.train = df[df["TARGET"].notnull()]
+        self.test = df[df["TARGET"].isnull()]
         del (df);gc.collect()
 
 class bureau_and_balance(Feature):
@@ -99,7 +103,9 @@ class bureau_and_balance(Feature):
         bureau_agg = pd.merge(bureau_agg,closed_agg, how='left', on='SK_ID_CURR')
         del closed, closed_agg, bureau
         gc.collect()
-        self.df = bureau_agg
+
+        self.train = pd.merge(train_id,bureau_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+        self.test = pd.merge(test_id,bureau_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
 
         del bureau_agg;gc.collect()
 
@@ -154,7 +160,9 @@ class previous_aplications(Feature):
         del refused, refused_agg, approved, approved_agg, prev
         gc.collect()
         
-        self.df = prev_agg
+        self.train = pd.merge(train_id,prev_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+        self.test = pd.merge(test_id,prev_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+
 
 class pos_cash(Feature):
     def create_features(self,nan_as_category=True):
@@ -173,9 +181,13 @@ class pos_cash(Feature):
         pos_agg.columns = pd.Index(['POS_' + e[0] + "_" + e[1].upper() for e in pos_agg.columns.tolist()])
         # Count pos cash accounts
         pos_agg['POS_COUNT'] = pos.groupby('SK_ID_CURR').size()
-        del pos
-        gc.collect()
-        self.df = pos_agg.reset_index()
+        pos_agg.reset_index(inplace=True)
+        del pos;gc.collect()
+        
+        pos_agg.to_csv("temp.csv")
+        self.train = pd.merge(train_id,pos_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+        self.test = pd.merge(test_id,pos_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+
 
 class installments_payments(Feature):
     def create_features(self,nan_as_category=True):
@@ -206,9 +218,13 @@ class installments_payments(Feature):
         ins_agg.columns = pd.Index(['INSTAL_' + e[0] + "_" + e[1].upper() for e in ins_agg.columns.tolist()])
         # Count installments accounts
         ins_agg['INSTAL_COUNT'] = ins.groupby('SK_ID_CURR').size()
-        del ins
-        gc.collect()
-        self.df = ins_agg.reset_index()
+        ins_agg.reset_index(inplace=True)
+        del ins;gc.collect()
+        
+        self.train = pd.merge(train_id,ins_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+        self.test = pd.merge(test_id,ins_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+
+
 
 class credit_card_valance(Feature):
     def create_features(self,nan_as_category = True):
@@ -220,14 +236,15 @@ class credit_card_valance(Feature):
         cc_agg.columns = pd.Index(['CC_' + e[0] + "_" + e[1].upper() for e in cc_agg.columns.tolist()])
         # Count credit card lines
         cc_agg['CC_COUNT'] = cc.groupby('SK_ID_CURR').size()
-        del cc
-        gc.collect()
-        self.df = cc_agg.reset_index()
+        cc_agg.reset_index(inplace=True)
+        del cc;gc.collect()
+        
+        self.train = pd.merge(train_id,cc_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+        self.test = pd.merge(test_id,cc_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
 
 
 if __name__ == '__main__':
     args = get_arguments()
 
     generate_features(globals(), args.force)
-
 
