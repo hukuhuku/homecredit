@@ -6,22 +6,17 @@ import numpy as np
 from base import *
 import gc
 
-train = pd.read_csv('./input/application_train.csv')
-test = pd.read_csv('./input/application_test.csv')
+train,test = get_input(converting=False)
 
 train_id = train[['SK_ID_CURR']]
 test_id = test[['SK_ID_CURR']]
 
-
-
-def concat_data(df,test):
-    df = df.append(test).reset_index()
-    del(test)
-    df = df[df["CODE_GENDER"] != 'XNA']
-    for bin_feature in ['CODE_GENDER', 'FLAG_OWN_CAR', 'FLAG_OWN_REALTY']:
-        df[bin_feature], uniques = pd.factorize(df[bin_feature])
-    df['DAYS_EMPLOYED'].replace(365243, np.nan, inplace= True)
-    return df
+def one_hot_encoder(df, nan_as_category = True):
+    original_columns = list(df.columns)
+    categorical_columns = [col for col in df.columns if df[col].dtype == 'object']
+    tmp = pd.get_dummies(df, columns= categorical_columns, dummy_na= nan_as_category)
+    new_columns = [c for c in tmp.columns if c not in original_columns]
+    return tmp
 
 class external_score_statics(Feature):
     def function(self,df):
@@ -36,40 +31,44 @@ class external_score_statics(Feature):
         self.test = self.function(test)
 
 class one_hot_encode(Feature):
-    def function(self,df, nan_as_category = True):
-        original_columns = list(df.columns)
-        categorical_columns = [col for col in df.columns if df[col].dtype == 'object']
-        tmp = pd.get_dummies(df, columns= categorical_columns, dummy_na= nan_as_category)
-        new_columns = [c for c in tmp.columns if c not in original_columns]
+    def create_features(self):
+        self.train = one_hot_encoder(train)
+        self.test = one_hot_encoder(test)
+
+class application(Feature):
+    def function(self,df):
+        tmp = pd.DataFrame()
+        docs = [_f for _f in df.columns if 'FLAG_DOC' in _f]
+        live = [_f for _f in df.columns if ('FLAG_' in _f) & ('FLAG_DOC' not in _f) & ('_FLAG_' not in _f)]
+    
+        tmp['DAYS_EMPLOYED_PERC'] = df['DAYS_EMPLOYED'] / df['DAYS_BIRTH'] # 勤続日数/年齢日数
+        tmp['INCOME_CREDIT_PERC'] = df['AMT_INCOME_TOTAL'] / df['AMT_CREDIT'] # 総収入/借入額
+
+        tmp['NEW_DOC_IND_KURT'] = df[docs].kurtosis(axis=1)
+        tmp['NEW_LIVE_IND_SUM'] = df[live].sum(axis=1)
+        
+        tmp['INCOME_PER_PERSON'] = df['AMT_INCOME_TOTAL'] / df['CNT_FAM_MEMBERS'] # 総収入/家族人数
+        tmp['ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL'] # 月々の返済額/総収入
+        tmp['PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT'] # 月々の返済額/借入額
+        
+        tmp['CREDIT_TO_ANNUITY_RATIO'] = df['AMT_CREDIT'] / df['AMT_ANNUITY'] #何回に分けて返済するか
+        tmp['CREDIT_TO_GOODS_RATIO'] = df['AMT_CREDIT'] / df['AMT_GOODS_PRICE'] #商品の値段に対するクレジットの割合
+        tmp['INC_PER_CHLD'] = df['AMT_INCOME_TOTAL'] / (1 + df['CNT_CHILDREN'])#子供に対するクライアントの収入
+        
+        tmp['CAR_TO_BIRTH_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_BIRTH']#車を早く持てる＝＞家庭環境良
+        tmp['CAR_TO_EMPLOY_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_EMPLOYED']
+        tmp['PHONE_TO_BIRTH_RATIO'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_BIRTH']
+        tmp['PHONE_TO_BIRTH_RATIO_EMPLOYER'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_EMPLOYED']
+
+        for bin_feature in ['CODE_GENDER', 'FLAG_OWN_CAR', 'FLAG_OWN_REALTY']:
+            tmp[bin_feature], uniques = pd.factorize(df[bin_feature])
+        
         return tmp
+
     def create_features(self):
         self.train = self.function(train)
         self.test = self.function(test)
-
-class application(Feature):
-    def create_features(self):
-        df['DAYS_EMPLOYED_PERC'] = df['DAYS_EMPLOYED'] / df['DAYS_BIRTH'] # 勤続日数/年齢日数
-        df['INCOME_CREDIT_PERC'] = df['AMT_INCOME_TOTAL'] / df['AMT_CREDIT'] # 総収入/借入額
-       
-        df['INCOME_PER_PERSON'] = df['AMT_INCOME_TOTAL'] / df['CNT_FAM_MEMBERS'] # 総収入/家族人数
-        df['ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL'] # 月々の返済額/総収入
-        df['PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT'] # 月々の返済額/借入額
         
-        df['CREDIT_TO_ANNUITY_RATIO'] = df['AMT_CREDIT'] / df['AMT_ANNUITY'] #何回に分けて返済するか
-        df['CREDIT_TO_GOODS_RATIO'] = df['AMT_CREDIT'] / df['AMT_GOODS_PRICE'] #商品の値段に対するクレジットの割合
-        df['INC_PER_CHLD'] = df['AMT_INCOME_TOTAL'] / (1 + df['CNT_CHILDREN'])　#子供に対するクライアントの収入
-        
-        
-        
-        df['CAR_TO_BIRTH_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_BIRTH']#車を早く持てる＝＞家庭環境良
-        df['CAR_TO_EMPLOY_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_EMPLOYED']
-        df['PHONE_TO_BIRTH_RATIO'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_BIRTH']
-        df['PHONE_TO_BIRTH_RATIO_EMPLOYER'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_EMPLOYED']
-   
-
-        self.train = df[df["TARGET"].notnull()]
-        self.test = df[df["TARGET"].isnull()]
-        del (df);gc.collect()
 
 class bureau_and_balance(Feature):
     def create_features(self,nan_as_category =True):
@@ -271,7 +270,7 @@ class credit_card_valance(Feature):
         self.train = pd.merge(train_id,cc_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
         self.test = pd.merge(test_id,cc_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
 
-"""
+
 if __name__ == '__main__':
     args = get_arguments()
 

@@ -62,6 +62,8 @@ class Feature(metaclass=ABCMeta):
             self.test.columns = prefix + self.test.columns + suffix
         return self
     
+
+
     @abstractmethod
     def create_features(self):
         raise NotImplementedError
@@ -76,17 +78,38 @@ class Feature(metaclass=ABCMeta):
             self.train.to_feather(str(self.train_path))
             self.test.to_feather(str(self.test_path))
 
-def get_input(feats,debug=False):
-    dfs = [pd.read_feather(f'./data/{f}_train.ftr') for f in feats]
-    X_train = pd.concat(dfs, axis=1)
+def get_input(feats=None,converting=False,debug=False):
+    if converting:
+        dfs = [pd.read_feather(f'./data/{f}_train.ftr') for f in feats]
+        X_train = pd.concat(dfs, axis=1)
 
-    dfs = [pd.read_feather(f'./data/{f}_test.ftr') for f in feats]
-    X_test = pd.concat(dfs, axis=1)
+        dfs = [pd.read_feather(f'./data/{f}_test.ftr') for f in feats]
+        X_test = pd.concat(dfs, axis=1)
 
-    if debug:
-        X_train = X_train.loc[:10000]
-        X_test = X_test.loc[:10000]
+        if debug:
+            X_train = X_train.loc[:5000]
+            X_test = X_test.loc[:1000]
+    else:
+        X_train = pd.read_csv('./input/application_train.csv')
+        X_test = pd.read_csv('./input/application_test.csv')  
+        X_train = clean_data(X_train)
+        X_test = clean_data(X_test)
 
-    return X_train,X_test                                            
+    return X_train,X_test   
 
+def clean_data(df):
+    df = df[df["CODE_GENDER"] != 'XNA']
+    for bin_feature in ['CODE_GENDER', 'FLAG_OWN_CAR', 'FLAG_OWN_REALTY']:
+        df[bin_feature], uniques = pd.factorize(df[bin_feature])
+    df['DAYS_EMPLOYED'].replace(365243, np.nan, inplace= True)
+    return df
+
+def get_flagdoc_columns():
+    return ['FLAG_DOCUMENT_2','FLAG_DOCUMENT_4',
+    'FLAG_DOCUMENT_5','FLAG_DOCUMENT_6','FLAG_DOCUMENT_7',
+    'FLAG_DOCUMENT_8','FLAG_DOCUMENT_9','FLAG_DOCUMENT_10', 
+    'FLAG_DOCUMENT_11','FLAG_DOCUMENT_12','FLAG_DOCUMENT_13',
+    'FLAG_DOCUMENT_14','FLAG_DOCUMENT_15','FLAG_DOCUMENT_16',
+    'FLAG_DOCUMENT_17','FLAG_DOCUMENT_18','FLAG_DOCUMENT_19',
+    'FLAG_DOCUMENT_20','FLAG_DOCUMENT_21']
 
