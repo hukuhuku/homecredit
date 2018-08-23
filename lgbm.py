@@ -13,11 +13,8 @@ from sklearn.model_selection import KFold, StratifiedKFold
 from base import *
 import tqdm
 
-
-
-
 def fit_predict(train,test, num_folds, stratified = False, debug= False):
-
+    models = []
     print("Starting LightGBM. Train shape: {}, test shape: {}".format(train.shape, test.shape))
     gc.collect()
     # Cross validation model
@@ -31,7 +28,10 @@ def fit_predict(train,test, num_folds, stratified = False, debug= False):
     sub_preds = np.zeros(test.shape[0])
     feature_importance_df = pd.DataFrame()
     feats = [f for f in train.columns if f not in ['TARGET','SK_ID_CURR','SK_ID_BUREAU','SK_ID_PREV','index']]
-    
+    fold_importance_df = pd.DataFrame()
+    fold_importance_df["feature"] = feats
+    fold_importance_df["importance"] = 0
+
     for n_fold, (train_idx, valid_idx) in enumerate(folds.split(train[feats], train['TARGET'])):
         train_x, train_y = train[feats].iloc[train_idx], train['TARGET'].iloc[train_idx]
         valid_x, valid_y = train[feats].iloc[valid_idx], train['TARGET'].iloc[valid_idx]
@@ -61,23 +61,17 @@ def fit_predict(train,test, num_folds, stratified = False, debug= False):
         oof_preds[valid_idx] = clf.predict_proba(valid_x, num_iteration=clf.best_iteration_)[:, 1]
         sub_preds += clf.predict_proba(test[feats], num_iteration=clf.best_iteration_)[:, 1] / folds.n_splits
 
-        fold_importance_df = pd.DataFrame()
-        fold_importance_df["feature"] = feats
-        fold_importance_df["importance"] = clf.feature_importances_
-        fold_importance_df["fold"] = n_fold + 1
-        feature_importance_df = pd.concat([feature_importance_df, fold_importance_df], axis=0)
-        print('Fold %2d AUC : %.6f' % (n_fold + 1, roc_auc_score(valid_y, oof_preds[valid_idx])))
-        del clf, train_x, train_y, valid_x, valid_y
-        gc.collect()
-
+        fold_importance_df["importance"] += clf.feature_importances_
+    
+    fold_importance_df["importance"] /= 5
     print('Full AUC score %.6f' % roc_auc_score(train['TARGET'], oof_preds))
     # Write submission file and plot feature importance
 
-    feature_importance_df.to_csv("./data/feature_importance_df.csv",index=True,header=True)
     #if not debug:
     test['TARGET'] = sub_preds
     test[['SK_ID_CURR', 'TARGET']].to_csv("./output/lgbm.csv", index= False)
 
+    return fold_importance_df.sort_values("importance",ascending=False)
 def main(debug=False):
     
     feats = ["application","bureau_and_balance","pos_cash","installments_payments","credit_card_valance"]
@@ -88,8 +82,8 @@ def main(debug=False):
         train,test = get_input(feats,debug=debug)
 
     with timer("Run LightGBM with kfold"):
-        fit_predict(train,test, num_folds= 5, stratified= False,debug=debug)
+        importance = fit_predict(train,test, num_folds= 5, stratified= False,debug=debug)
 
-
+    importance.to_csv("importance.csv")
 if __name__ == "__main__":
-    main(debug=False)
+    main(debug=True)
