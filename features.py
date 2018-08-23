@@ -6,15 +6,13 @@ import numpy as np
 from base import *
 import gc
 
-train_id = pd.read_csv('./input/application_train.csv')[['SK_ID_CURR']]
-test_id = pd.read_csv('./input/application_test.csv')[['SK_ID_CURR']]
+train = pd.read_csv('./input/application_train.csv')
+test = pd.read_csv('./input/application_test.csv')
 
-def one_hot_encoder(df, nan_as_category = True):
-    original_columns = list(df.columns)
-    categorical_columns = [col for col in df.columns if df[col].dtype == 'object']
-    df = pd.get_dummies(df, columns= categorical_columns, dummy_na= nan_as_category)
-    new_columns = [c for c in df.columns if c not in original_columns]
-    return df, new_columns
+train_id = train[['SK_ID_CURR']]
+test_id = test[['SK_ID_CURR']]
+
+
 
 def concat_data(df,test):
     df = df.append(test).reset_index()
@@ -25,19 +23,50 @@ def concat_data(df,test):
     df['DAYS_EMPLOYED'].replace(365243, np.nan, inplace= True)
     return df
 
+class external_score_statics(Feature):
+    def function(self,df):
+        tmp = pd.DataFrame()
+        tmp['SOURCES_PROD_PRODUCT'] = df['EXT_SOURCE_1'] * df['EXT_SOURCE_2'] * df['EXT_SOURCE_3']
+        tmp['EXT_SOURCES_MEAN'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].mean(axis=1)
+        tmp['SCORES_STD'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].std(axis=1)
+        tmp['SCORES_STD'] = tmp['SCORES_STD'].fillna(tmp['SCORES_STD'].mean())
+        return tmp
+    def create_features(self):
+        self.train = self.function(train)
+        self.test = self.function(test)
+
+class one_hot_encode(Feature):
+    def function(self,df, nan_as_category = True):
+        original_columns = list(df.columns)
+        categorical_columns = [col for col in df.columns if df[col].dtype == 'object']
+        tmp = pd.get_dummies(df, columns= categorical_columns, dummy_na= nan_as_category)
+        new_columns = [c for c in tmp.columns if c not in original_columns]
+        return tmp
+    def create_features(self):
+        self.train = self.function(train)
+        self.test = self.function(test)
+
 class application(Feature):
     def create_features(self):
-        train = pd.read_csv('./input/application_train.csv')
-        test = pd.read_csv('./input/application_test.csv')
-        df = concat_data(train,test)
-        df, cat_cols = one_hot_encoder(df, nan_as_category=False)
-    
         df['DAYS_EMPLOYED_PERC'] = df['DAYS_EMPLOYED'] / df['DAYS_BIRTH'] # 勤続日数/年齢日数
         df['INCOME_CREDIT_PERC'] = df['AMT_INCOME_TOTAL'] / df['AMT_CREDIT'] # 総収入/借入額
+       
         df['INCOME_PER_PERSON'] = df['AMT_INCOME_TOTAL'] / df['CNT_FAM_MEMBERS'] # 総収入/家族人数
         df['ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL'] # 月々の返済額/総収入
         df['PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT'] # 月々の返済額/借入額
         
+        df['CREDIT_TO_ANNUITY_RATIO'] = df['AMT_CREDIT'] / df['AMT_ANNUITY'] #何回に分けて返済するか
+        df['CREDIT_TO_GOODS_RATIO'] = df['AMT_CREDIT'] / df['AMT_GOODS_PRICE'] #商品の値段に対するクレジットの割合
+        df['INC_PER_CHLD'] = df['AMT_INCOME_TOTAL'] / (1 + df['CNT_CHILDREN'])　#子供に対するクライアントの収入
+        
+        
+        
+        df['CAR_TO_BIRTH_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_BIRTH']#車を早く持てる＝＞家庭環境良
+        df['CAR_TO_EMPLOY_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_EMPLOYED']
+        df['PHONE_TO_BIRTH_RATIO'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_BIRTH']
+        df['PHONE_TO_BIRTH_RATIO_EMPLOYER'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_EMPLOYED']
+   
+
         self.train = df[df["TARGET"].notnull()]
         self.test = df[df["TARGET"].isnull()]
         del (df);gc.collect()
@@ -242,7 +271,7 @@ class credit_card_valance(Feature):
         self.train = pd.merge(train_id,cc_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
         self.test = pd.merge(test_id,cc_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
 
-
+"""
 if __name__ == '__main__':
     args = get_arguments()
 
