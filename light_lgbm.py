@@ -52,7 +52,7 @@ def lightgbm(train_df):
     score = roc_auc_score(valid_y, oof_preds)
     print('Full AUC score %.6f' %score)
 
-    feature_importance_df.to_csv("importance_{}.csv".format(score))
+    feature_importance_df.sort_values("importance",ascending=False).to_csv("importance_{}.csv".format(score))
 
     del clf, train_x, train_y, valid_x, valid_y;gc.collect()
 
