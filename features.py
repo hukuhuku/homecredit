@@ -93,19 +93,19 @@ class bureau_and_balance(Feature):
 
         # Bureau and bureau_balance numeric features
         num_aggregations = {
-            'DAYS_CREDIT': ['mean', 'var'],
-            'DAYS_CREDIT_ENDDATE': ['mean'],
+            'DAYS_CREDIT': ['min', 'max', 'mean', 'var'],
+            'DAYS_CREDIT_ENDDATE': ['min', 'max', 'mean'],
             'DAYS_CREDIT_UPDATE': ['mean'],
-            'CREDIT_DAY_OVERDUE': ['mean'],
+            'CREDIT_DAY_OVERDUE': ['max', 'mean'],
             'AMT_CREDIT_MAX_OVERDUE': ['mean'],
-            'AMT_CREDIT_SUM': ['mean', 'sum'],
-            'AMT_CREDIT_SUM_DEBT': ['mean', 'sum'],
+            'AMT_CREDIT_SUM': ['max', 'mean', 'sum'],
+            'AMT_CREDIT_SUM_DEBT': ['max', 'mean', 'sum'],
             'AMT_CREDIT_SUM_OVERDUE': ['mean'],
             'AMT_CREDIT_SUM_LIMIT': ['mean', 'sum'],
             'AMT_ANNUITY': ['max', 'mean'],
             'CNT_CREDIT_PROLONG': ['sum'],
             'MONTHS_BALANCE_MIN': ['min'],
-            'MONTHS_BALANCE_MAX': ['max'],
+           'MONTHS_BALANCE_MAX': ['max'],
             'MONTHS_BALANCE_SIZE': ['mean', 'sum']
         }
 
@@ -153,15 +153,15 @@ class previous_aplications(Feature):
         prev['APP_CREDIT_PERC'] = prev['AMT_APPLICATION'] / prev['AMT_CREDIT']
         # Previous applications numeric features
         num_aggregations = {
-            'AMT_ANNUITY': [ 'max', 'mean'],
-            'AMT_APPLICATION': [ 'max','mean'],
-            'AMT_CREDIT': [ 'max', 'mean'],
-            'APP_CREDIT_PERC': [ 'max', 'mean'],
-            'AMT_DOWN_PAYMENT': [ 'max', 'mean'],
-            'AMT_GOODS_PRICE': [ 'max', 'mean'],
-            'HOUR_APPR_PROCESS_START': [ 'max', 'mean'],
-            'RATE_DOWN_PAYMENT': ['max', 'mean'],
-            'DAYS_DECISION': [ 'max', 'mean'],
+            'AMT_ANNUITY': ['min', 'max', 'mean'],
+            'AMT_APPLICATION': ['min', 'max', 'mean'],
+            'AMT_CREDIT': ['min', 'max', 'mean'],
+            'APP_CREDIT_PERC': ['min', 'max', 'mean', 'var'],
+            'AMT_DOWN_PAYMENT': ['min', 'max', 'mean'],
+            'AMT_GOODS_PRICE': ['min', 'max', 'mean'],
+            'HOUR_APPR_PROCESS_START': ['min', 'max', 'mean'],
+            'RATE_DOWN_PAYMENT': ['min', 'max', 'mean'],
+            'DAYS_DECISION': ['min', 'max', 'mean'],
             'CNT_PAYMENT': ['mean', 'sum'],
         }
         # Previous applications categorical features
