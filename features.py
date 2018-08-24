@@ -6,6 +6,9 @@ import numpy as np
 from base import *
 import gc
 
+import warnings
+warnings.filterwarnings('ignore')
+
 train,test = get_input(converting=False)
 
 train_id = train[['SK_ID_CURR']]
@@ -14,61 +17,68 @@ test_id = test[['SK_ID_CURR']]
 def one_hot_encoder(df, nan_as_category = True):
     original_columns = list(df.columns)
     categorical_columns = [col for col in df.columns if df[col].dtype == 'object']
-    tmp = pd.get_dummies(df, columns= categorical_columns, dummy_na= nan_as_category)
-    new_columns = [c for c in tmp.columns if c not in original_columns]
-    return tmp
+    df = pd.get_dummies(df, columns= categorical_columns, dummy_na= nan_as_category)
+    new_columns = [c for c in df.columns if c not in original_columns]
+    return df,new_columns
 
 class external_score_statics(Feature):
     def function(self,df):
         tmp = pd.DataFrame()
-        tmp['SOURCES_PROD_PRODUCT'] = df['EXT_SOURCE_1'] * df['EXT_SOURCE_2'] * df['EXT_SOURCE_3']
+        tmp['SOURCES_PROD_PRODUCT'] = (df['EXT_SOURCE_1']+0.01) * (df['EXT_SOURCE_2']+0.01) * (df['EXT_SOURCE_3']+0.01)
         tmp['EXT_SOURCES_MEAN'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].mean(axis=1)
+
         tmp['SCORES_STD'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].std(axis=1)
+        tmp['SCORES_MAX'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].max(axis=1)
+        tmp['SCORES_MIN'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].min(axis=1)
+
         tmp['SCORES_STD'] = tmp['SCORES_STD'].fillna(tmp['SCORES_STD'].mean())
+        tmp['SCORES_MAX'] = tmp['SCORES_STD'].fillna(tmp['SCORES_MAX'].mean())
+        tmp['SCORES_MIN'] = tmp['SCORES_STD'].fillna(tmp['SCORES_MIN'].mean())
         return tmp
     def create_features(self):
         self.train = self.function(train)
         self.test = self.function(test)
 
-class one_hot_encode(Feature):
-    def create_features(self):
-        self.train = one_hot_encoder(train)
-        self.test = one_hot_encoder(test)
-
+"""
 class application(Feature):
     def function(self,df):
-        tmp = pd.DataFrame()
+        df = df[df["CODE_GENDER"] != 'XNA']
+        df['DAYS_EMPLOYED'].replace(365243, np.nan, inplace= True)
+
         docs = [_f for _f in df.columns if 'FLAG_DOC' in _f]
         live = [_f for _f in df.columns if ('FLAG_' in _f) & ('FLAG_DOC' not in _f) & ('_FLAG_' not in _f)]
     
-        tmp['DAYS_EMPLOYED_PERC'] = df['DAYS_EMPLOYED'] / df['DAYS_BIRTH'] # 勤続日数/年齢日数
-        tmp['INCOME_CREDIT_PERC'] = df['AMT_INCOME_TOTAL'] / df['AMT_CREDIT'] # 総収入/借入額
+        df['DAYS_EMPLOYED_PERC'] = df['DAYS_EMPLOYED'] / df['DAYS_BIRTH'] # 勤続日数/年齢日数
+        df['INCOME_CREDIT_PERC'] = df['AMT_INCOME_TOTAL'] / df['AMT_CREDIT'] # 総収入/借入額
 
-        tmp['NEW_DOC_IND_KURT'] = df[docs].kurtosis(axis=1)
-        tmp['NEW_LIVE_IND_SUM'] = df[live].sum(axis=1)
+        df['NEW_DOC_IND_KURT'] = df[docs].kurtosis(axis=1)
+        df['NEW_LIVE_IND_SUM'] = df[live].sum(axis=1)
         
-        tmp['INCOME_PER_PERSON'] = df['AMT_INCOME_TOTAL'] / df['CNT_FAM_MEMBERS'] # 総収入/家族人数
-        tmp['ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL'] # 月々の返済額/総収入
-        tmp['PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT'] # 月々の返済額/借入額
+        df['INCOME_PER_PERSON'] = df['AMT_INCOME_TOTAL'] / df['CNT_FAM_MEMBERS'] # 総収入/家族人数
+        df['ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL'] # 月々の返済額/総収入
+        df['PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT'] # 月々の返済額/借入額
         
-        tmp['CREDIT_TO_ANNUITY_RATIO'] = df['AMT_CREDIT'] / df['AMT_ANNUITY'] #何回に分けて返済するか
-        tmp['CREDIT_TO_GOODS_RATIO'] = df['AMT_CREDIT'] / df['AMT_GOODS_PRICE'] #商品の値段に対するクレジットの割合
-        tmp['INC_PER_CHLD'] = df['AMT_INCOME_TOTAL'] / (1 + df['CNT_CHILDREN'])#子供に対するクライアントの収入
+        df['CREDIT_TO_ANNUITY_RATIO'] = df['AMT_CREDIT'] / df['AMT_ANNUITY'] #何回に分けて返済するか
+        df['CREDIT_TO_GOODS_RATIO'] = df['AMT_CREDIT'] / df['AMT_GOODS_PRICE'] #商品の値段に対するクレジットの割合
+        df['INC_PER_CHLD'] = df['AMT_INCOME_TOTAL'] / (1 + df['CNT_CHILDREN'])#子供に対するクライアントの収入
         
-        tmp['CAR_TO_BIRTH_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_BIRTH']#車を早く持てる＝＞家庭環境良
-        tmp['CAR_TO_EMPLOY_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_EMPLOYED']
-        tmp['PHONE_TO_BIRTH_RATIO'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_BIRTH']
-        tmp['PHONE_TO_BIRTH_RATIO_EMPLOYER'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_EMPLOYED']
+        df['CAR_TO_BIRTH_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_BIRTH']#車を早く持てる＝＞家庭環境良
+        df['CAR_TO_EMPLOY_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_EMPLOYED']
+        df['PHONE_TO_BIRTH_RATIO'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_BIRTH']
+        df['PHONE_TO_BIRTH_RATIO_EMPLOYER'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_EMPLOYED']
 
         for bin_feature in ['CODE_GENDER', 'FLAG_OWN_CAR', 'FLAG_OWN_REALTY']:
-            tmp[bin_feature], uniques = pd.factorize(df[bin_feature])
+            df[bin_feature], uniques = pd.factorize(df[bin_feature])
+
+        # Categorical features with One-Hot encode
+        df, cat_cols = one_hot_encoder(df, nan_as_category=True)
         
-        return tmp
+        return df
 
     def create_features(self):
         self.train = self.function(train)
         self.test = self.function(test)
-        
+"""    
 
 class bureau_and_balance(Feature):
     def create_features(self,nan_as_category =True):
@@ -91,20 +101,16 @@ class bureau_and_balance(Feature):
 
         # Bureau and bureau_balance numeric features
         num_aggregations = {
-            'DAYS_CREDIT': ['mean', 'var'],
-            'DAYS_CREDIT_ENDDATE': ['mean'],
-            'DAYS_CREDIT_UPDATE': ['mean'],
-            'CREDIT_DAY_OVERDUE': ['mean'],
-            'AMT_CREDIT_MAX_OVERDUE': ['mean'],
-            'AMT_CREDIT_SUM': ['mean', 'sum'],
-            'AMT_CREDIT_SUM_DEBT': ['mean', 'sum'],
-            'AMT_CREDIT_SUM_OVERDUE': ['mean'],
-            'AMT_CREDIT_SUM_LIMIT': ['mean', 'sum'],
-            'AMT_ANNUITY': ['max', 'mean'],
-            'CNT_CREDIT_PROLONG': ['sum'],
-            'MONTHS_BALANCE_MIN': ['min'],
-            'MONTHS_BALANCE_MAX': ['max'],
-            'MONTHS_BALANCE_SIZE': ['mean', 'sum']
+        'AMT_ANNUITY': ['min', 'max', 'mean'],
+        'AMT_APPLICATION': ['min', 'max', 'mean'],
+        'AMT_CREDIT': ['min', 'max', 'mean'],
+        'APP_CREDIT_PERC': ['min', 'max', 'mean', 'var'],
+        'AMT_DOWN_PAYMENT': ['min', 'max', 'mean'],
+        'AMT_GOODS_PRICE': ['min', 'max', 'mean'],
+        'HOUR_APPR_PROCESS_START': ['min', 'max', 'mean'],
+        'RATE_DOWN_PAYMENT': ['min', 'max', 'mean'],
+        'DAYS_DECISION': ['min', 'max', 'mean'],
+        'CNT_PAYMENT': ['mean', 'sum'],
         }
 
         # Bureau and bureau_balance categorical features
@@ -132,8 +138,8 @@ class bureau_and_balance(Feature):
         del closed, closed_agg, bureau
         gc.collect()
 
-        self.train = pd.merge(train_id,bureau_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
-        self.test = pd.merge(test_id,bureau_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+        self.train = pd.merge(train_id,bureau_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
+        self.test = pd.merge(test_id,bureau_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
 
         del bureau_agg;gc.collect()
 
@@ -151,17 +157,17 @@ class previous_aplications(Feature):
         prev['APP_CREDIT_PERC'] = prev['AMT_APPLICATION'] / prev['AMT_CREDIT']
         # Previous applications numeric features
         num_aggregations = {
-            'AMT_ANNUITY': [ 'max', 'mean'],
-            'AMT_APPLICATION': [ 'max','mean'],
-            'AMT_CREDIT': [ 'max', 'mean'],
-            'APP_CREDIT_PERC': [ 'max', 'mean'],
-            'AMT_DOWN_PAYMENT': [ 'max', 'mean'],
-            'AMT_GOODS_PRICE': [ 'max', 'mean'],
-            'HOUR_APPR_PROCESS_START': [ 'max', 'mean'],
-            'RATE_DOWN_PAYMENT': ['max', 'mean'],
-            'DAYS_DECISION': [ 'max', 'mean'],
+            'AMT_ANNUITY': ['min', 'max', 'mean'],
+            'AMT_APPLICATION': ['min', 'max', 'mean'],
+            'AMT_CREDIT': ['min', 'max', 'mean'],
+            'APP_CREDIT_PERC': ['min', 'max', 'mean', 'var'],
+            'AMT_DOWN_PAYMENT': ['min', 'max', 'mean'],
+            'AMT_GOODS_PRICE': ['min', 'max', 'mean'],
+            'HOUR_APPR_PROCESS_START': ['min', 'max', 'mean'],
+            'RATE_DOWN_PAYMENT': ['min', 'max', 'mean'],
+            'DAYS_DECISION': ['min', 'max', 'mean'],
             'CNT_PAYMENT': ['mean', 'sum'],
-        }
+        }   
         # Previous applications categorical features
         cat_aggregations = {}
         for cat in cat_cols:
@@ -188,8 +194,8 @@ class previous_aplications(Feature):
         del refused, refused_agg, approved, approved_agg, prev
         gc.collect()
         
-        self.train = pd.merge(train_id,prev_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
-        self.test = pd.merge(test_id,prev_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+        self.train = pd.merge(train_id,prev_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
+        self.test = pd.merge(test_id,prev_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
 
 
 class pos_cash(Feature):
@@ -211,10 +217,9 @@ class pos_cash(Feature):
         pos_agg['POS_COUNT'] = pos.groupby('SK_ID_CURR').size()
         pos_agg.reset_index(inplace=True)
         del pos;gc.collect()
-        
-        pos_agg.to_csv("temp.csv")
-        self.train = pd.merge(train_id,pos_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
-        self.test = pd.merge(test_id,pos_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+    
+        self.train = pd.merge(train_id,pos_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
+        self.test = pd.merge(test_id,pos_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
 
 
 class installments_payments(Feature):
@@ -249,8 +254,8 @@ class installments_payments(Feature):
         ins_agg.reset_index(inplace=True)
         del ins;gc.collect()
         
-        self.train = pd.merge(train_id,ins_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
-        self.test = pd.merge(test_id,ins_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+        self.train = pd.merge(train_id,ins_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
+        self.test = pd.merge(test_id,ins_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
 
 
 
@@ -267,12 +272,11 @@ class credit_card_valance(Feature):
         cc_agg.reset_index(inplace=True)
         del cc;gc.collect()
         
-        self.train = pd.merge(train_id,cc_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
-        self.test = pd.merge(test_id,cc_agg,on="SK_ID_CURR",how="inner").drop(["SK_ID_CURR"],axis=1)
+        self.train = pd.merge(train_id,cc_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
+        self.test = pd.merge(test_id,cc_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
 
 
 if __name__ == '__main__':
     args = get_arguments()
-
     generate_features(globals(), args.force)
 
