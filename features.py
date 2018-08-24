@@ -24,25 +24,18 @@ def one_hot_encoder(df, nan_as_category = True):
 class external_score_statics(Feature):
     def function(self,df):
         tmp = pd.DataFrame()
-        tmp['SOURCES_PROD_PRODUCT'] = (df['EXT_SOURCE_1']+0.01) * (df['EXT_SOURCE_2']+0.01) * (df['EXT_SOURCE_3']+0.01)
+        tmp['SOURCES_PROD_PRODUCT'] = df['EXT_SOURCE_1'] * df['EXT_SOURCE_2'] * df['EXT_SOURCE_3']
         tmp['EXT_SOURCES_MEAN'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].mean(axis=1)
-
         tmp['SCORES_STD'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].std(axis=1)
-        tmp['SCORES_MAX'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].max(axis=1)
-        tmp['SCORES_MIN'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].min(axis=1)
-
         tmp['SCORES_STD'] = tmp['SCORES_STD'].fillna(tmp['SCORES_STD'].mean())
-        tmp['SCORES_MAX'] = tmp['SCORES_STD'].fillna(tmp['SCORES_MAX'].mean())
-        tmp['SCORES_MIN'] = tmp['SCORES_STD'].fillna(tmp['SCORES_MIN'].mean())
         return tmp
     def create_features(self):
         self.train = self.function(train)
         self.test = self.function(test)
 
-"""
+
 class application(Feature):
     def function(self,df):
-        df = df[df["CODE_GENDER"] != 'XNA']
         df['DAYS_EMPLOYED'].replace(365243, np.nan, inplace= True)
 
         docs = [_f for _f in df.columns if 'FLAG_DOC' in _f]
@@ -70,15 +63,14 @@ class application(Feature):
         for bin_feature in ['CODE_GENDER', 'FLAG_OWN_CAR', 'FLAG_OWN_REALTY']:
             df[bin_feature], uniques = pd.factorize(df[bin_feature])
 
-        # Categorical features with One-Hot encode
         df, cat_cols = one_hot_encoder(df, nan_as_category=True)
-        
+
         return df
 
     def create_features(self):
         self.train = self.function(train)
         self.test = self.function(test)
-"""    
+        
 
 class bureau_and_balance(Feature):
     def create_features(self,nan_as_category =True):
@@ -101,16 +93,20 @@ class bureau_and_balance(Feature):
 
         # Bureau and bureau_balance numeric features
         num_aggregations = {
-        'AMT_ANNUITY': ['min', 'max', 'mean'],
-        'AMT_APPLICATION': ['min', 'max', 'mean'],
-        'AMT_CREDIT': ['min', 'max', 'mean'],
-        'APP_CREDIT_PERC': ['min', 'max', 'mean', 'var'],
-        'AMT_DOWN_PAYMENT': ['min', 'max', 'mean'],
-        'AMT_GOODS_PRICE': ['min', 'max', 'mean'],
-        'HOUR_APPR_PROCESS_START': ['min', 'max', 'mean'],
-        'RATE_DOWN_PAYMENT': ['min', 'max', 'mean'],
-        'DAYS_DECISION': ['min', 'max', 'mean'],
-        'CNT_PAYMENT': ['mean', 'sum'],
+            'DAYS_CREDIT': ['mean', 'var'],
+            'DAYS_CREDIT_ENDDATE': ['mean'],
+            'DAYS_CREDIT_UPDATE': ['mean'],
+            'CREDIT_DAY_OVERDUE': ['mean'],
+            'AMT_CREDIT_MAX_OVERDUE': ['mean'],
+            'AMT_CREDIT_SUM': ['mean', 'sum'],
+            'AMT_CREDIT_SUM_DEBT': ['mean', 'sum'],
+            'AMT_CREDIT_SUM_OVERDUE': ['mean'],
+            'AMT_CREDIT_SUM_LIMIT': ['mean', 'sum'],
+            'AMT_ANNUITY': ['max', 'mean'],
+            'CNT_CREDIT_PROLONG': ['sum'],
+            'MONTHS_BALANCE_MIN': ['min'],
+            'MONTHS_BALANCE_MAX': ['max'],
+            'MONTHS_BALANCE_SIZE': ['mean', 'sum']
         }
 
         # Bureau and bureau_balance categorical features
@@ -157,17 +153,17 @@ class previous_aplications(Feature):
         prev['APP_CREDIT_PERC'] = prev['AMT_APPLICATION'] / prev['AMT_CREDIT']
         # Previous applications numeric features
         num_aggregations = {
-            'AMT_ANNUITY': ['min', 'max', 'mean'],
-            'AMT_APPLICATION': ['min', 'max', 'mean'],
-            'AMT_CREDIT': ['min', 'max', 'mean'],
-            'APP_CREDIT_PERC': ['min', 'max', 'mean', 'var'],
-            'AMT_DOWN_PAYMENT': ['min', 'max', 'mean'],
-            'AMT_GOODS_PRICE': ['min', 'max', 'mean'],
-            'HOUR_APPR_PROCESS_START': ['min', 'max', 'mean'],
-            'RATE_DOWN_PAYMENT': ['min', 'max', 'mean'],
-            'DAYS_DECISION': ['min', 'max', 'mean'],
+            'AMT_ANNUITY': [ 'max', 'mean'],
+            'AMT_APPLICATION': [ 'max','mean'],
+            'AMT_CREDIT': [ 'max', 'mean'],
+            'APP_CREDIT_PERC': [ 'max', 'mean'],
+            'AMT_DOWN_PAYMENT': [ 'max', 'mean'],
+            'AMT_GOODS_PRICE': [ 'max', 'mean'],
+            'HOUR_APPR_PROCESS_START': [ 'max', 'mean'],
+            'RATE_DOWN_PAYMENT': ['max', 'mean'],
+            'DAYS_DECISION': [ 'max', 'mean'],
             'CNT_PAYMENT': ['mean', 'sum'],
-        }   
+        }
         # Previous applications categorical features
         cat_aggregations = {}
         for cat in cat_cols:
@@ -217,7 +213,8 @@ class pos_cash(Feature):
         pos_agg['POS_COUNT'] = pos.groupby('SK_ID_CURR').size()
         pos_agg.reset_index(inplace=True)
         del pos;gc.collect()
-    
+        
+        pos_agg.to_csv("temp.csv")
         self.train = pd.merge(train_id,pos_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
         self.test = pd.merge(test_id,pos_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
 
@@ -279,4 +276,3 @@ class credit_card_valance(Feature):
 if __name__ == '__main__':
     args = get_arguments()
     generate_features(globals(), args.force)
-
