@@ -19,14 +19,12 @@ test_id = test[['SK_ID_CURR']]
 
 
 def target_encode(train,df,target,categorical):
-    
     tmp = pd.DataFrame(train.groupby(categorical)[target].agg("mean"))
     tmp.reset_index(inplace=True)
-    tmp.columns = [categorical,categorical+"_mean"]
+    tmp.columns = [categorical,categorical+"_"+target+"_mean"]
     df = pd.merge(df,tmp,how="left",on=categorical)
     del(tmp)
-    return df
-
+    return df[categorical+"_"+target+"_mean"]
 
 def one_hot_encoder(df, nan_as_category = True):
     original_columns = list(df.columns)
@@ -75,17 +73,24 @@ class corresponding_aggregate(Feature):
             "AMT_GOODS_PRICE"
         ]
         dfs = []
-        kf = KFold(n_splits = 5,shuffle=True)
-
         for target in target_cols:
             for categorical in categorical_cols:
-                print(target,categorical)
-                for train_index,test_index in kf.split(df):
-                    tmp = target_encode(df.loc[train_index],df.loc[test_index],target,categorical)
-                    dfs.append(tmp)
+                tmp = target_encode(df,df,target,categorical)
+                dfs.append(tmp)
 
-        return pd.concat(dfs,axis=0)
+        tmp = pd.concat(dfs,axis=1)
         
+        df = pd.concat([df,tmp],axis=1)
+
+        new_columns = []
+        for target in target_cols:
+            for categorical in categorical_cols:
+                df[categorical+"_"+target+"_CORRESPONDIG_AGG"] = df[target]/df[categorical+"_"+target+"_mean"]
+                new_columns.append(categorical+"_"+target+"_CORRESPONDIG_AGG")
+        print(new_columns)
+        return df[new_columns]
+        
+ 
     def create_features(self):
         self.train = self.function(train)
         self.test = self.function(test)
