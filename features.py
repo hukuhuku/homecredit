@@ -17,6 +17,17 @@ train,test = get_input(converting=False)
 train_id = train[['SK_ID_CURR']]
 test_id = test[['SK_ID_CURR']]
 
+
+def target_encode(train,df,target,categorical):
+    
+    tmp = pd.DataFrame(train.groupby(categorical)[target].agg("mean"))
+    tmp.reset_index(inplace=True)
+    tmp.columns = [categorical,categorical+"_mean"]
+    df = pd.merge(df,tmp,how="left",on=categorical)
+    del(tmp)
+    return df
+
+
 def one_hot_encoder(df, nan_as_category = True):
     original_columns = list(df.columns)
     categorical_columns = [col for col in df.columns if df[col].dtype == 'object']
@@ -51,6 +62,34 @@ def fill_na(df,target,feats):
     df.loc[df[target].isnull(),target] = pred
     return df
 
+
+class corresponding_aggregate(Feature):
+    def function(self,df):
+        categorical_cols = [
+            "CODE_GENDER","FLAG_OWN_CAR","FLAG_OWN_REALTY",
+            "NAME_INCOME_TYPE","NAME_EDUCATION_TYPE","NAME_FAMILY_STATUS",
+            "OCCUPATION_TYPE"
+            ]
+        target_cols = [
+            "AMT_CREDIT",'AMT_ANNUITY',"AMT_INCOME_TOTAL",
+            "AMT_GOODS_PRICE"
+        ]
+        dfs = []
+        kf = KFold(n_splits = 5,shuffle=True)
+
+        for target in target_cols:
+            for categorical in categorical_cols:
+                print(target,categorical)
+                for train_index,test_index in kf.split(df):
+                    tmp = target_encode(df.loc[train_index],df.loc[test_index],target,categorical)
+                    dfs.append(tmp)
+
+        return pd.concat(dfs,axis=0)
+        
+    def create_features(self):
+        self.train = self.function(train)
+        self.test = self.function(test)
+
 class application(Feature):
     def function(self,df):
         #df = df[df['CODE_GENDER'] != 'XNA']
@@ -66,8 +105,11 @@ class application(Feature):
         df['NEW_INC_BY_ORG'] = df['ORGANIZATION_TYPE'].map(inc_by_org)
         df['NEW_LIVE_IND_SUM'] = df[live].sum(axis=1)
         df['NEW_PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT'] # 月々の返済額/借入額
+        
         df['NEW_CREDIT_TO_ANNUITY_RATIO'] = df['AMT_CREDIT'] / df['AMT_ANNUITY'] #何回に分けて返済するか
         df['NEW_CREDIT_TO_GOODS_RATIO'] = df['AMT_CREDIT'] / df['AMT_GOODS_PRICE'] #商品の値段に対するクレジットの割合
+        df['NEW_CREDIT_TO_INCOME_RATIO'] = df['AMT_CREDIT'] / df['AMT_INCOME_TOTAL'] #商品の値段に対するクレジットの割合
+        
         df['NEW_CAR_TO_BIRTH_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_BIRTH']#車を早く持てる＝＞家庭環境良
         df['NEW_CAR_TO_EMPLOY_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_EMPLOYED']
         df['NEW_PHONE_TO_BIRTH_RATIO'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_BIRTH']
@@ -77,7 +119,7 @@ class application(Feature):
         df['NEW_INC_PER_CHLD'] = df['AMT_INCOME_TOTAL'] / (1 + df['CNT_CHILDREN'])#子供に対するクライアントの収入
         df['NEW_INCOME_PER_PERSON'] = df['AMT_INCOME_TOTAL'] / df['CNT_FAM_MEMBERS'] # 総収入/家族人数
         df['NEW_ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL'] # 月々の返済額/総収入
-
+        df['NEW_ANNUITY_TO_INCOME_RATIO'] = df['AMT_ANNUITY'] / (1 + df['AMT_INCOME_TOTAL'])
         
 
         for bin_feature in ['CODE_GENDER', 'FLAG_OWN_CAR', 'FLAG_OWN_REALTY']:
@@ -282,8 +324,8 @@ class installments_payments(Feature):
             'NUM_INSTALMENT_VERSION': ['nunique'],
             'DPD': ['max', 'mean', 'sum','min','std' ],
             'DBD': ['max', 'mean', 'sum','min','std'],
-            'PAYMENT_PERC': [ 'max','mean',  'var','min','std'],
-            'PAYMENT_DIFF': [ 'max','mean', 'var','min','std'],
+            'PAYMENT_PERC': [ 'max','mean',  'var','min','std',"sum"],
+            'PAYMENT_DIFF': [ 'max','mean', 'var','min','std',"sum"],
             'AMT_INSTALMENT': ['max', 'mean', 'sum','min','std'],
             'AMT_PAYMENT': ['min', 'max', 'mean', 'sum','std'],
             'DAYS_ENTRY_PAYMENT': ['max', 'mean', 'sum','std']
