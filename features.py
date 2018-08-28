@@ -9,6 +9,9 @@ import gc
 import warnings
 warnings.filterwarnings('ignore')
 
+from sklearn.model_selection import KFold
+import lightgbm as lgb
+
 train,test = get_input(converting=False)
 
 train_id = train[['SK_ID_CURR']]
@@ -21,49 +24,86 @@ def one_hot_encoder(df, nan_as_category = True):
     new_columns = [c for c in df.columns if c not in original_columns]
     return df,new_columns
 
-class external_score_statics(Feature):
-    def function(self,df):
-        tmp = pd.DataFrame()
-        tmp['SOURCES_PROD_PRODUCT'] = df['EXT_SOURCE_1'] * df['EXT_SOURCE_2'] * df['EXT_SOURCE_3']
-        tmp['EXT_SOURCES_MEAN'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].mean(axis=1)
-        tmp['SCORES_STD'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].std(axis=1)
-        tmp['SCORES_STD'] = tmp['SCORES_STD'].fillna(tmp['SCORES_STD'].mean())
-        return tmp
-    def create_features(self):
-        self.train = self.function(train)
-        self.test = self.function(test)
+def fill_na(df,target,feats):
+    lgb_params = {
+        'objective': 'regression',
+        'num_leaves': 60,
+        'subsample': 0.6143,
+        'colsample_bytree': 0.6453,
+        'min_split_gain': np.power(10, -2.5988),
+        'reg_alpha': np.power(10, -2.2887),
+        'reg_lambda': np.power(10, 1.7570),
+        'min_child_weight': np.power(10, -0.1477),
+        'verbose': -1,
+        'seed': 3,
+        'boosting_type': 'gbdt',
+        'max_depth': -1,
+        'learning_rate': 0.05,
+        'metric': 'rmse',
+    }
+    df_train = df[df[target].notnull()]
+    df_test = df[df[target].isnull()]
 
+    dtrain = lgb.Dataset(data = df_train[feats],label=df_train[target])
+    model = lgb.train(lgb_params,dtrain)
+
+    pred = model.predict(df_test[feats],num_iteration=model.best_iteration)
+    df.loc[df[target].isnull(),target] = pred
+    return df
 
 class application(Feature):
     def function(self,df):
+        #df = df[df['CODE_GENDER'] != 'XNA']
         df['DAYS_EMPLOYED'].replace(365243, np.nan, inplace= True)
 
         docs = [_f for _f in df.columns if 'FLAG_DOC' in _f]
         live = [_f for _f in df.columns if ('FLAG_' in _f) & ('FLAG_DOC' not in _f) & ('_FLAG_' not in _f)]
-    
-        df['DAYS_EMPLOYED_PERC'] = df['DAYS_EMPLOYED'] / df['DAYS_BIRTH'] # 勤続日数/年齢日数
-        df['INCOME_CREDIT_PERC'] = df['AMT_INCOME_TOTAL'] / df['AMT_CREDIT'] # 総収入/借入額
 
+        inc_by_org = df[['AMT_INCOME_TOTAL', 'ORGANIZATION_TYPE']].groupby('ORGANIZATION_TYPE').median()['AMT_INCOME_TOTAL']
+        df['NEW_DAYS_EMPLOYED_PERC'] = df['DAYS_EMPLOYED'] / df['DAYS_BIRTH'] # 勤続日数/年齢日数
         df['NEW_DOC_IND_KURT'] = df[docs].kurtosis(axis=1)
+        df['NEW_DOC_IND_SUM'] = df[docs].sum(axis=1)
+        df['NEW_INC_BY_ORG'] = df['ORGANIZATION_TYPE'].map(inc_by_org)
         df['NEW_LIVE_IND_SUM'] = df[live].sum(axis=1)
+        df['NEW_PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT'] # 月々の返済額/借入額
+        df['NEW_CREDIT_TO_ANNUITY_RATIO'] = df['AMT_CREDIT'] / df['AMT_ANNUITY'] #何回に分けて返済するか
+        df['NEW_CREDIT_TO_GOODS_RATIO'] = df['AMT_CREDIT'] / df['AMT_GOODS_PRICE'] #商品の値段に対するクレジットの割合
+        df['NEW_CAR_TO_BIRTH_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_BIRTH']#車を早く持てる＝＞家庭環境良
+        df['NEW_CAR_TO_EMPLOY_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_EMPLOYED']
+        df['NEW_PHONE_TO_BIRTH_RATIO'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_BIRTH']
+        df['NEW_PHONE_TO_BIRTH_RATIO_EMPLOYER'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_EMPLOYED']
         
-        df['INCOME_PER_PERSON'] = df['AMT_INCOME_TOTAL'] / df['CNT_FAM_MEMBERS'] # 総収入/家族人数
-        df['ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL'] # 月々の返済額/総収入
-        df['PAYMENT_RATE'] = df['AMT_ANNUITY'] / df['AMT_CREDIT'] # 月々の返済額/借入額
+        df['NEW_INCOME_CREDIT_PERC'] = df['AMT_INCOME_TOTAL'] / df['AMT_CREDIT'] # 総収入/借入額
+        df['NEW_INC_PER_CHLD'] = df['AMT_INCOME_TOTAL'] / (1 + df['CNT_CHILDREN'])#子供に対するクライアントの収入
+        df['NEW_INCOME_PER_PERSON'] = df['AMT_INCOME_TOTAL'] / df['CNT_FAM_MEMBERS'] # 総収入/家族人数
+        df['NEW_ANNUITY_INCOME_PERC'] = df['AMT_ANNUITY'] / df['AMT_INCOME_TOTAL'] # 月々の返済額/総収入
+
         
-        df['CREDIT_TO_ANNUITY_RATIO'] = df['AMT_CREDIT'] / df['AMT_ANNUITY'] #何回に分けて返済するか
-        df['CREDIT_TO_GOODS_RATIO'] = df['AMT_CREDIT'] / df['AMT_GOODS_PRICE'] #商品の値段に対するクレジットの割合
-        df['INC_PER_CHLD'] = df['AMT_INCOME_TOTAL'] / (1 + df['CNT_CHILDREN'])#子供に対するクライアントの収入
-        
-        df['CAR_TO_BIRTH_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_BIRTH']#車を早く持てる＝＞家庭環境良
-        df['CAR_TO_EMPLOY_RATIO'] = df['OWN_CAR_AGE'] / df['DAYS_EMPLOYED']
-        df['PHONE_TO_BIRTH_RATIO'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_BIRTH']
-        df['PHONE_TO_BIRTH_RATIO_EMPLOYER'] = df['DAYS_LAST_PHONE_CHANGE'] / df['DAYS_EMPLOYED']
 
         for bin_feature in ['CODE_GENDER', 'FLAG_OWN_CAR', 'FLAG_OWN_REALTY']:
             df[bin_feature], uniques = pd.factorize(df[bin_feature])
 
         df, cat_cols = one_hot_encoder(df, nan_as_category=True)
+
+        dropcolum=['FLAG_DOCUMENT_2','FLAG_DOCUMENT_4',
+            'FLAG_DOCUMENT_5','FLAG_DOCUMENT_6','FLAG_DOCUMENT_7',
+            'FLAG_DOCUMENT_8','FLAG_DOCUMENT_9','FLAG_DOCUMENT_10', 
+            'FLAG_DOCUMENT_11','FLAG_DOCUMENT_12','FLAG_DOCUMENT_13',
+            'FLAG_DOCUMENT_14','FLAG_DOCUMENT_15','FLAG_DOCUMENT_16',
+            'FLAG_DOCUMENT_17','FLAG_DOCUMENT_18','FLAG_DOCUMENT_19',
+            'FLAG_DOCUMENT_20','FLAG_DOCUMENT_21']
+        df= df.drop(dropcolum,axis=1)
+
+        df["SOURCES_COUNT_NA"] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].count(axis=1)
+        ext_cols = [_f for _f in df.columns if "EXT_SOURCE_" in _f]
+        feats = [f for f in df.columns if f not in ['TARGET','SK_ID_CURR','SK_ID_BUREAU','SK_ID_PREV','index','EXT_SOURCE_']]
+        for col in ext_cols:
+            df = fill_na(df,col,feats)
+        
+        df['SOURCES_PROD_PRODUCT'] = (df['EXT_SOURCE_1']+0.1) * (df['EXT_SOURCE_2']+0.1) * (df['EXT_SOURCE_3']+0.1)
+        df['EXT_SOURCES_MEAN'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].mean(axis=1)
+        df['SCORES_STD'] = df[['EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3']].std(axis=1)
+        df['SCORES_STD'] = df['SCORES_STD'].fillna(df['SCORES_STD'].mean())
 
         return df
 
@@ -77,6 +117,7 @@ class bureau_and_balance(Feature):
         bureau = pd.read_csv("./input/bureau.csv")
         bb = pd.read_csv('./input/bureau_balance.csv')
         
+        bureau["CREDIT_ACTIVE_int"] = bureau["CREDIT_ACTIVE"].apply(lambda x: 1 if x=="Active" else 0 )
         bureau,bureau_cat = one_hot_encoder(bureau,nan_as_category)
         bb,bb_cat = one_hot_encoder(bb,nan_as_category)
  
@@ -90,6 +131,7 @@ class bureau_and_balance(Feature):
         bureau.drop(['SK_ID_BUREAU'], axis=1, inplace= True)
         del bb, bb_agg
         gc.collect()
+        
 
         # Bureau and bureau_balance numeric features
         num_aggregations = {
@@ -105,17 +147,21 @@ class bureau_and_balance(Feature):
             'AMT_ANNUITY': ['max', 'mean'],
             'CNT_CREDIT_PROLONG': ['sum'],
             'MONTHS_BALANCE_MIN': ['min'],
-           'MONTHS_BALANCE_MAX': ['max'],
-            'MONTHS_BALANCE_SIZE': ['mean', 'sum']
+            'MONTHS_BALANCE_MAX': ['max'],
+            'MONTHS_BALANCE_SIZE': ['mean', 'sum'],
+            "CREDIT_ACTIVE_int":["mean"]
         }
 
         # Bureau and bureau_balance categorical features
         cat_aggregations = {}
         for cat in bureau_cat: cat_aggregations[cat] = ['mean']
         for cat in bb_cat: cat_aggregations[cat + "_MEAN"] = ['mean']
-    
+
+        
         bureau_agg = bureau.groupby('SK_ID_CURR').agg({**num_aggregations, **cat_aggregations})
         bureau_agg.columns = pd.Index(['BURO_' + e[0] + "_" + e[1].upper() for e in bureau_agg.columns.tolist()])
+
+
         # Bureau: Active credits - using only numerical aggregations
         active = bureau[bureau['CREDIT_ACTIVE_Active'] == 1]
         active_agg = active.groupby('SK_ID_CURR').agg(num_aggregations)
@@ -262,7 +308,7 @@ class credit_card_valance(Feature):
         cc, cat_cols = one_hot_encoder(cc, nan_as_category= True)
         # General aggregations
         cc.drop(['SK_ID_PREV'], axis= 1, inplace = True)
-        cc_agg = cc.groupby('SK_ID_CURR').agg([ 'max', 'mean', 'sum', 'var'])
+        cc_agg = cc.groupby('SK_ID_CURR').agg(['min', 'max', 'mean', 'sum', 'var'])
         cc_agg.columns = pd.Index(['CC_' + e[0] + "_" + e[1].upper() for e in cc_agg.columns.tolist()])
         # Count credit card lines
         cc_agg['CC_COUNT'] = cc.groupby('SK_ID_CURR').size()
