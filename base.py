@@ -18,12 +18,10 @@ def get_arguments(description = None):
     parser.add_argument('--force', '-f', action='store_true', help='Overwrite existing files')
     return parser.parse_args()
 
-
 def get_features(namespace):
     for k, v in namespace.items():
         if inspect.isclass(v) and issubclass(v, Feature) and not inspect.isabstract(v):
             yield v()
-
 
 def generate_features(namespace, overwrite):
     for f in get_features(namespace):
@@ -63,12 +61,16 @@ class Feature(metaclass=ABCMeta):
         return self
     
 
-
     @abstractmethod
     def create_features(self):
         raise NotImplementedError
     
     def save(self):
+        if self.train.shape[1] != self.test.shape[1]:#some categorical value only exsist train,one hot encode cant generate them columns
+            no_category_in_test = [_f for _f in self.train.columns if (_f not in self.test.columns) & (_f != "TARGET")]
+            for col in no_category_in_test:
+                del(self.train[col])
+
         try:
             self.train.to_feather(str(self.train_path))
             self.test.to_feather(str(self.test_path))
@@ -80,29 +82,22 @@ class Feature(metaclass=ABCMeta):
 
 def get_input(feats=None,converting=False,debug=False):
     if converting:
-        dfs = [pd.read_feather(f'./data/{f}_train.ftr') for f in feats]
+        dfs = [pd.read_feather(f'./data/{f}_train.ftr') for f in feats]            
         X_train = pd.concat(dfs, axis=1)
-
+        
         dfs = [pd.read_feather(f'./data/{f}_test.ftr') for f in feats]
         X_test = pd.concat(dfs, axis=1)
-
+        
         if debug:
             X_train = X_train.loc[:5000]
             X_test = X_test.loc[:1000]
+    
     else:
         X_train = pd.read_csv('./input/application_train.csv')
         X_test = pd.read_csv('./input/application_test.csv')  
-        X_train = clean_data(X_train)
-        X_test = clean_data(X_test)
 
     return X_train,X_test   
 
-def clean_data(df):
-    df = df[df["CODE_GENDER"] != 'XNA']
-    for bin_feature in ['CODE_GENDER', 'FLAG_OWN_CAR', 'FLAG_OWN_REALTY']:
-        df[bin_feature], uniques = pd.factorize(df[bin_feature])
-    df['DAYS_EMPLOYED'].replace(365243, np.nan, inplace= True)
-    return df
 
 def get_flagdoc_columns():
     return ['FLAG_DOCUMENT_2','FLAG_DOCUMENT_4',
