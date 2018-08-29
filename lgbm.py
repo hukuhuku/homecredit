@@ -46,13 +46,15 @@ def fit_predict(train,test,num_folds,debug):
     sub_preds = np.zeros(test.shape[0])
     feature_importance_df = pd.DataFrame()
     feats = [f for f in train.columns if f not in ['TARGET','SK_ID_CURR','SK_ID_BUREAU','SK_ID_PREV','index']]
-    fold_importance_df = pd.DataFrame()
-    fold_importance_df["feature"] = feats
-    fold_importance_df["importance"] = 0
+    
+    sub = test[["SK_ID_CURR"]]
+    target = train["TARGET"]
+    train = train.drop(['TARGET','SK_ID_CURR','SK_ID_BUREAU','SK_ID_PREV','index'],axis=1)
+    test = test.drop(['SK_ID_CURR','SK_ID_BUREAU','SK_ID_PREV','index'],axis=1)
 
-    for n_fold, (train_idx, valid_idx) in enumerate(folds.split(train[feats], train['TARGET'])):
-        train_x, train_y = train[feats].iloc[train_idx], train['TARGET'].iloc[train_idx]
-        valid_x, valid_y = train[feats].iloc[valid_idx], train['TARGET'].iloc[valid_idx]
+    for n_fold, (train_idx, valid_idx) in enumerate(folds.split(train[feats],target)):
+        train_x, train_y = train.iloc[train_idx], target.iloc[train_idx]
+        valid_x, valid_y = train.iloc[valid_idx], target.iloc[valid_idx]
 
         print(train_x.shape)
         clf = get_clf()
@@ -61,25 +63,18 @@ def fit_predict(train,test,num_folds,debug):
             eval_metric= 'auc', verbose= 100, early_stopping_rounds= 200)
 
         oof_preds[valid_idx] = clf.predict_proba(valid_x, num_iteration=clf.best_iteration_)[:, 1]
-        sub_preds += clf.predict_proba(test[feats], num_iteration=clf.best_iteration_)[:, 1] / folds.n_splits
+        sub_preds += clf.predict_proba(test, num_iteration=clf.best_iteration_)[:, 1] / folds.n_splits
 
-        fold_importance_df["importance"] += clf.feature_importances_
-        
-        #drop_columns = fold_importance_df.loc[fold_importance_df["importance"] == 0,"feature"]
-        
-        #feats = [_f for _f in feats if _f not in drop_columns]
     
-    fold_importance_df["importance"] /= 5
-    score = roc_auc_score(train['TARGET'], oof_preds)
+    score = roc_auc_score(target, oof_preds)
     print('Full AUC score {}'.format(score))
     # Write submission file and plot feature importance
 
     #if not debug:
-    test['TARGET'] = sub_preds
-    test[['SK_ID_CURR', 'TARGET']].to_csv("./output/"+name+"_lgbm.csv", index= False)
+    sub['TARGET'] = sub_preds
+    sub[['SK_ID_CURR', 'TARGET']].to_csv("./output/lgbm.csv", index= False)
 
-    return fold_importance_df.sort_values("importance",ascending=False)
-
+    return 
 
   
 def main(debug):
@@ -96,9 +91,9 @@ def main(debug):
 
 
     with timer("Run LightGBM with kfold"):
-        importance = fit_predict(train,test,debug=debug,num_folds=5)
+        fit_predict(train,test,debug=debug,num_folds=3)
 
-    importance.to_csv("importance_{}.csv".format(name))
+    
     
 if __name__ == "__main__":
-    main(debug=True)
+    main(debug=False)
