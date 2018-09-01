@@ -14,12 +14,14 @@ import lightgbm as lgb
 
 train,test = get_input(converting=False)
 
+train = train[train['CODE_GENDER'] != 'XNA']
+test = test[test['CODE_GENDER'] != 'XNA']
+
 train_id = train[['SK_ID_CURR']]
 test_id = test[['SK_ID_CURR']]
 
-
-def target_encode(train,df,target,categorical):
-    tmp = pd.DataFrame(train.groupby(categorical)[target].agg("mean"))
+def target_encode(df,target,categorical):
+    tmp = pd.DataFrame(df.groupby(categorical)[target].agg("mean"))
     tmp.reset_index(inplace=True)
     tmp.columns = [categorical,categorical+"_"+target+"_mean"]
     df = pd.merge(df,tmp,how="left",on=categorical)
@@ -72,22 +74,17 @@ class corresponding_aggregate(Feature):
             "AMT_CREDIT",'AMT_ANNUITY',"AMT_INCOME_TOTAL",
             "AMT_GOODS_PRICE"
         ]
-        dfs = []
+
         for target in target_cols:
             for categorical in categorical_cols:
-                tmp = target_encode(df,df,target,categorical)
-                dfs.append(tmp)
-
-        tmp = pd.concat(dfs,axis=1)
-        
-        df = pd.concat([df,tmp],axis=1)
+                tmp = target_encode(df,target,categorical)
+                df[categorical+"_"+target+"_mean"] = tmp
 
         new_columns = []
         for target in target_cols:
             for categorical in categorical_cols:
                 df[categorical+"_"+target+"_CORRESPONDIG_AGG"] = df[target]/df[categorical+"_"+target+"_mean"]
                 new_columns.append(categorical+"_"+target+"_CORRESPONDIG_AGG")
-        print(new_columns)
         return df[new_columns]
         
  
@@ -95,9 +92,9 @@ class corresponding_aggregate(Feature):
         self.train = self.function(train)
         self.test = self.function(test)
 
+
 class application(Feature):
     def function(self,df):
-        #df = df[df['CODE_GENDER'] != 'XNA']
         df['DAYS_EMPLOYED'].replace(365243, np.nan, inplace= True)
 
         docs = [_f for _f in df.columns if 'FLAG_DOC' in _f]
@@ -348,7 +345,6 @@ class installments_payments(Feature):
         self.test = pd.merge(test_id,ins_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
 
 
-
 class credit_card_valance(Feature):
     def create_features(self,nan_as_category = True):
         cc = pd.read_csv('./input/credit_card_balance.csv')
@@ -364,6 +360,7 @@ class credit_card_valance(Feature):
         
         self.train = pd.merge(train_id,cc_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
         self.test = pd.merge(test_id,cc_agg,on="SK_ID_CURR",how="left").drop(["SK_ID_CURR"],axis=1)
+        print(self.train.shape)
 
 
 if __name__ == '__main__':

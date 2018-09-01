@@ -17,7 +17,6 @@ def lightgbm(train_df):
     # Divide in training/validation and test data
     print("Starting LightGBM. Train shape: {}".format(train_df.shape,))
 
-    feature_importance_df = pd.DataFrame()
     feats = [f for f in train_df.columns if f not in ['TARGET','SK_ID_CURR','SK_ID_BUREAU','SK_ID_PREV','index']]
     
     train_x, valid_x, train_y, valid_y = train_test_split(train_df[feats], train_df["TARGET"], random_state=0)
@@ -46,13 +45,13 @@ def lightgbm(train_df):
     fold_importance_df = pd.DataFrame()
     fold_importance_df["feature"] = feats
     fold_importance_df["importance"] = clf.feature_importances_
-    feature_importance_df = pd.concat([feature_importance_df, fold_importance_df], axis=0)
+    
   
     gc.collect()
     score = roc_auc_score(valid_y, oof_preds)
     print('Full AUC score %.6f' %score)
 
-    feature_importance_df.sort_values("importance",ascending=False).to_csv("importance_{}.csv".format(score))
+    fold_importance_df.sort_values("importance",ascending=False).to_csv("./importance/importance_{}.csv".format(score))
 
     del clf, train_x, train_y, valid_x, valid_y;gc.collect()
 
@@ -60,7 +59,8 @@ def lightgbm(train_df):
 def main():
     feats = ["application","bureau_and_balance","pos_cash",
             "installments_payments","credit_card_valance",
-            "external_score_statics","previous_aplications"]
+            "external_score_statics","previous_aplications",
+            "income","application_and_bureau"]
 
     name = "_and_".join(feats)
     print(name+" modeling start")
@@ -68,7 +68,7 @@ def main():
     with timer("Load_data"):
         train,_ = get_input(feats,converting=True)
         train = train.sample(n=(int(train.shape[0]/10)))
-
+    print(train.shape)
 
     with timer("Run LightGBM"):
         importance = lightgbm(train)
